@@ -154,8 +154,29 @@ void DualDirectionalInput::process()
             OverrideGamepad(gamepad, gamepad->getActiveDpadMode(), dualOut);
         }
     } else {
-        // the DDI and gamepad outputs don't need to be mixed, so just apply DDI output to the gamepad
-        OverrideGamepad(gamepad, options.dpadMode, dualOut);
+        // The DDI and gamepad outputs are independent. For an analog target, overlay only
+        // the DDI axes that are active so a proportional stick can keep driving the other
+        // axis (and both axes while the DDI is idle).
+        OverlayGamepad(gamepad, options.dpadMode, dualOut);
+    }
+}
+
+void DualDirectionalInput::OverlayGamepad(Gamepad * gamepad, DpadMode mode, uint8_t dpad) {
+    const uint8_t horizontal = dpad & (GAMEPAD_MASK_LEFT | GAMEPAD_MASK_RIGHT);
+    const uint8_t vertical = dpad & (GAMEPAD_MASK_UP | GAMEPAD_MASK_DOWN);
+
+    switch (mode) {
+        case DPAD_MODE_LEFT_ANALOG:
+            if (horizontal) gamepad->state.lx = dpadToAnalogX(dpad);
+            if (vertical) gamepad->state.ly = dpadToAnalogY(dpad);
+            break;
+        case DPAD_MODE_RIGHT_ANALOG:
+            if (horizontal) gamepad->state.rx = dpadToAnalogX(dpad);
+            if (vertical) gamepad->state.ry = dpadToAnalogY(dpad);
+            break;
+        case DPAD_MODE_DIGITAL:
+            gamepad->state.dpad = dpad;
+            break;
     }
 }
 

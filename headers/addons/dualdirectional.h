@@ -32,6 +32,7 @@ private:
     void SOCDDualClean(SOCDMode);
     uint8_t SOCDCombine(SOCDMode, uint8_t);
     uint8_t SOCDGamepadClean(uint8_t, bool isLastWin);
+    void OverlayGamepad(Gamepad *, DpadMode, uint8_t);
     void OverrideGamepad(Gamepad *, DpadMode, uint8_t);
     const SOCDMode getSOCDMode(const GamepadOptions&);
     uint8_t dualState;          // Dual Directional State

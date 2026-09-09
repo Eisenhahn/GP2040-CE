@@ -1,8 +1,39 @@
 #include "addons/dualdirectional.h"
 #include "storagemanager.h"
+#include "drivermanager.h"
 #include "helper.h"
 #include "config.pb.h"
 #include "types.h"
+
+namespace {
+uint8_t leftAnalogToDigitalDpad(const GamepadState& state) {
+    uint16_t joystickMid = GAMEPAD_JOYSTICK_MID;
+    if (DriverManager::getInstance().getDriver() != nullptr) {
+        joystickMid = DriverManager::getInstance().getDriver()->GetJoystickMidValue();
+    }
+
+    // Require 50% axis travel before producing a digital direction. The
+    // Analog add-on uses radial deadzones, so an exact midpoint comparison
+    // makes small off-axis movement appear as an unwanted diagonal.
+    const uint16_t joystickLow = joystickMid / 2;
+    const uint16_t joystickHigh = joystickMid + (joystickMid / 2);
+
+    uint8_t dpad = 0;
+    if (state.lx < joystickLow) {
+        dpad |= GAMEPAD_MASK_LEFT;
+    } else if (state.lx > joystickHigh) {
+        dpad |= GAMEPAD_MASK_RIGHT;
+    }
+
+    if (state.ly < joystickLow) {
+        dpad |= GAMEPAD_MASK_UP;
+    } else if (state.ly > joystickHigh) {
+        dpad |= GAMEPAD_MASK_DOWN;
+    }
+
+    return dpad;
+}
+}
 
 bool DualDirectionalInput::available() {
     return Storage::getInstance().getAddonOptions().dualDirectionalOptions.enabled;
@@ -127,6 +158,22 @@ void DualDirectionalInput::process()
     uint8_t dualOut = dualState;
     const SOCDMode socdMode = getSOCDMode(gamepad->getOptions());
     uint8_t gamepadDpad = gpadToBinary(gamepad->getActiveDpadMode(), gamepad->state);
+    const bool hasDdiMappings = (mapDpadUp->pinMask | mapDpadDown->pinMask |
+            mapDpadLeft->pinMask | mapDpadRight->pinMask) != 0;
+
+    // C-AS swap mode: with the primary directions configured as D-Pad and DDI
+    // configured as Left Analog + None, and with DDI mappings in the active
+    // profile, turn the proportional left stick into digital D-Pad directions,
+    // then give the Left Stick exclusively to DDI. Profiles without DDI
+    // mappings retain the proportional Left Stick output.
+    if (hasDdiMappings &&
+            options.combineMode == DualDirectionalCombinationMode::NONE_MODE &&
+            gamepad->getActiveDpadMode() == DpadMode::DPAD_MODE_DIGITAL &&
+            options.dpadMode == DpadMode::DPAD_MODE_LEFT_ANALOG) {
+        gamepad->state.dpad |= leftAnalogToDigitalDpad(gamepad->state);
+        OverrideGamepad(gamepad, options.dpadMode, dualOut);
+        return;
+    }
 
     // in mixed mode, we need to combine/re-clean the gamepad and DDI outputs to create a coherent behavior
     // reminder that combination mode none with the DDI output set to the same thing as the gamepad
@@ -145,12 +192,17 @@ void DualDirectionalInput::process()
             dualOut |= gamepadDpad;
         }
         OverrideGamepad(gamepad, gamepad->getActiveDpadMode(), dualOut);
-    } else if (options.combineMode != DualDirectionalCombinationMode::NONE_MODE) {
-        // this is either of the override modes, which we will treat the same way --- they replace
-        // the gamepad entirely in certain conditions: DDI Override if it has any data,
-        // Gamepad Override if gamepad doesn't have any data
-        if ((options.combineMode == DualDirectionalCombinationMode::DUAL_MODE && dualOut != 0) ||
-                (options.combineMode == DualDirectionalCombinationMode::GAMEPAD_MODE && gamepadDpad == 0)) {
+    } else if (options.combineMode == DualDirectionalCombinationMode::DUAL_MODE) {
+        // DDI Override: while DDI is active, neutralize the primary directional
+        // output and emit DDI in its own configured mode. This allows a primary
+        // Left Analog output to be replaced by a digital D-pad output.
+        if (dualOut != 0) {
+            OverrideGamepad(gamepad, gamepad->getActiveDpadMode(), 0);
+            OverrideGamepad(gamepad, options.dpadMode, dualOut);
+        }
+    } else if (options.combineMode == DualDirectionalCombinationMode::GAMEPAD_MODE) {
+        // Gamepad Override: use DDI only when the primary directions are idle.
+        if (gamepadDpad == 0) {
             OverrideGamepad(gamepad, gamepad->getActiveDpadMode(), dualOut);
         }
     } else {

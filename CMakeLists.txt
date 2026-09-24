@@ -285,6 +285,7 @@ pico_set_program_version(GP2040-CE ${GIT_REPO_VERSION})
 
 target_link_libraries(${PROJECT_NAME}
 pico_stdlib
+pico_unique_id
 pico_bootsel_via_double_reset
 tinyusb_host
 tinyusb_pico_pio_usb

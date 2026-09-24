@@ -373,7 +373,8 @@ void Gamepad::read()
 		| ((values & mapButtonE12->pinMask) ? mapButtonE12->buttonMask : 0)
 	;
 
-	// set the effective dpad mode based on settings + overrides
+	// Momentary GPIO modifiers override the current D-pad mode only while held.
+	// Releasing every modifier falls back to the saved/default mode.
 	if (values & mapButtonDP->pinMask)	activeDpadMode = DpadMode::DPAD_MODE_DIGITAL;
 	else if (values & mapButtonLS->pinMask)	activeDpadMode = DpadMode::DPAD_MODE_LEFT_ANALOG;
 	else if (values & mapButtonRS->pinMask)	activeDpadMode = DpadMode::DPAD_MODE_RIGHT_ANALOG;
